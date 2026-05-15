@@ -131,11 +131,15 @@ else
 fi
 
 log "Compressing ${TAR_ARGS[*]} (this may take a while)..."
+TAR_STDERR=$(mktemp)
 if ! tar --use-compress-program="$COMPRESS" \
          -cf "$TAR_LOCAL" \
-         "${TAR_ARGS[@]}" 2>/dev/null; then
-  fail "tar failed"
+         "${TAR_ARGS[@]}" 2>"$TAR_STDERR"; then
+  TAR_ERR=$(grep -v "Removing leading" "$TAR_STDERR" | head -5)
+  rm -f "$TAR_STDERR"
+  fail "tar failed: $TAR_ERR"
 fi
+rm -f "$TAR_STDERR"
 
 TAR_SIZE=$(stat -c %s "$TAR_LOCAL" 2>/dev/null || stat -f %z "$TAR_LOCAL")
 log "Tar generated: $(bytes_to_human "$TAR_SIZE")"
