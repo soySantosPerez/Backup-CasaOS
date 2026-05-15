@@ -37,8 +37,8 @@ If anything fails in any phase, the script:
 ## Installation
 
 ```bash
-git clone https://github.com/YOUR_USER/casaos-backup.git
-cd casaos-backup
+git clone https://github.com/soySantosPerez/Backup-CasaOS.git
+cd Backup-CasaOS
 
 # Install dependencies and set up .env
 sudo ./install.sh
