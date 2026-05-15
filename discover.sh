@@ -32,9 +32,8 @@ ENTRIES=()
 while IFS=$'\t' read -r NAME IMAGE; do
   [[ "$QUIET" == false ]] && echo "Found: $NAME ($IMAGE)"
 
-  # Try to list databases
-  # Attempt common users: postgres, then the container's POSTGRES_USER env var
-  PG_USER=$(docker exec "$NAME" bash -c 'echo ${POSTGRES_USER:-postgres}' 2>/dev/null || echo "postgres")
+  # Get the POSTGRES_USER from the container's environment
+  PG_USER=$(docker exec "$NAME" sh -c 'echo ${POSTGRES_USER:-postgres}' 2>/dev/null || echo "postgres")
 
   [[ "$QUIET" == false ]] && echo "  User: $PG_USER"
   [[ "$QUIET" == false ]] && echo "  Databases:"
