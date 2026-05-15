@@ -40,6 +40,10 @@ if [[ ! -f "$SCRIPT_DIR/.env" ]]; then
   echo
   echo "No .env found. Copying .env.example to .env..."
   cp "$SCRIPT_DIR/.env.example" "$SCRIPT_DIR/.env"
+  # If run with sudo, make .env owned by the real user so they can edit without sudo
+  if [[ -n "${SUDO_USER:-}" ]]; then
+    chown "$SUDO_USER:$SUDO_USER" "$SCRIPT_DIR/.env"
+  fi
   echo
   echo "Edit $SCRIPT_DIR/.env with your settings before running the backup."
 else
@@ -49,6 +53,12 @@ fi
 
 # Make scripts executable
 chmod +x "$SCRIPT_DIR/backup.sh" "$SCRIPT_DIR/uninstall.sh"
+
+# Ensure logs directory is owned by the real user
+mkdir -p "$SCRIPT_DIR/logs"
+if [[ -n "${SUDO_USER:-}" ]]; then
+  chown "$SUDO_USER:$SUDO_USER" "$SCRIPT_DIR/logs"
+fi
 
 # Offer cron setup
 echo
