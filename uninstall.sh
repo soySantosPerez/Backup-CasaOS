@@ -11,9 +11,12 @@ echo
 
 # Remove cron job
 EXISTING_CRON=$(crontab -l 2>/dev/null || true)
-if echo "$EXISTING_CRON" | grep -q "casaos-backup\|backup\.sh"; then
+if echo "$EXISTING_CRON" | grep -q "backup\.sh"; then
   echo "Removing cron job..."
-  echo "$EXISTING_CRON" | grep -v "casaos-backup\|backup\.sh" | crontab -
+  TMPFILE=$(mktemp)
+  echo "$EXISTING_CRON" | grep -v "backup\.sh" > "$TMPFILE" || true
+  crontab "$TMPFILE"
+  rm -f "$TMPFILE"
   echo "Cron job removed."
 else
   echo "No casaos-backup cron job found."

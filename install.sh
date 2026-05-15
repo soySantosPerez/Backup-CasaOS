@@ -78,9 +78,15 @@ echo "Want to schedule nightly backups at 2:00 AM? (y/N)"
 read -r REPLY
 if [[ "$REPLY" =~ ^[Yy]$ ]]; then
   CRON_LINE="0 2 * * * cd $SCRIPT_DIR && ./backup.sh >> $SCRIPT_DIR/logs/cron.log 2>&1"
-  (crontab -l 2>/dev/null | grep -v "casaos-backup"; echo "$CRON_LINE") | crontab -
+  TMPFILE=$(mktemp)
+  crontab -l 2>/dev/null | grep -v "backup\.sh" > "$TMPFILE" || true
+  echo "$CRON_LINE" >> "$TMPFILE"
+  crontab "$TMPFILE"
+  rm -f "$TMPFILE"
   echo "Cron job added:"
   echo "  $CRON_LINE"
+  echo
+  echo "Verify with: crontab -l"
 else
   echo "Skipped. You can add it later — see examples/crontab.example"
 fi
