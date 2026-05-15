@@ -130,9 +130,10 @@ else
   COMPRESS="gzip -6"
 fi
 
+log "Compressing ${TAR_ARGS[*]} (this may take a while)..."
 if ! tar --use-compress-program="$COMPRESS" \
          -cf "$TAR_LOCAL" \
-         "${TAR_ARGS[@]}" 2>&1; then
+         "${TAR_ARGS[@]}" 2>/dev/null; then
   fail "tar failed"
 fi
 
