@@ -40,10 +40,10 @@ If anything fails in any phase, the script:
 git clone https://github.com/soySantosPerez/Backup-CasaOS.git
 cd Backup-CasaOS
 
-# Install dependencies and set up .env
+# Install dependencies, create .env, and auto-detect Postgres databases
 sudo ./install.sh
 
-# Edit .env with your real values
+# Edit .env with your Telegram token, chat ID, NAS path, etc.
 nano .env
 
 # Test it
@@ -63,6 +63,16 @@ nano .env
 chmod +x backup.sh
 sudo ./backup.sh
 ```
+
+## Discovering Postgres databases
+
+The installer automatically detects running Postgres containers and writes `PG_DUMP_DBS` into your `.env`. If you add new Postgres apps later, re-run discovery:
+
+```bash
+sudo ./discover.sh
+```
+
+It scans running containers, lists their databases, and prints a ready-to-paste `PG_DUMP_DBS=` line. If you don't use Postgres, leave `PG_DUMP_DBS` empty — the backup will skip that phase.
 
 ## Setting up Telegram
 
@@ -143,6 +153,14 @@ curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
 **NAS not mounted in time**: if cron runs before CIFS/NFS is ready, the script fails with "BACKUP_DEST does not exist". Make sure the mount is in `/etc/fstab` with `_netdev`, or mounted via systemd with `RequiresMountsFor`.
 
 **Not enough temp space**: the tar is created in `/tmp` before being rsync'd. If your CasaOS data is huge, ensure `/tmp` has enough space or set `WORK_DIR` in the script.
+
+## Uninstalling
+
+```bash
+sudo ./uninstall.sh
+```
+
+This removes the cron job and optionally deletes logs, `.env`, and the project directory. Your backups on the NAS are never touched.
 
 ## License
 

@@ -46,14 +46,30 @@ if [[ ! -f "$SCRIPT_DIR/.env" ]]; then
   echo
   echo "No .env found. Copying .env.example to .env..."
   cp "$SCRIPT_DIR/.env.example" "$SCRIPT_DIR/.env"
+
+  # Auto-detect Postgres databases and write to .env
+  if command -v docker >/dev/null 2>&1 && docker ps >/dev/null 2>&1; then
+    echo
+    echo "=== Postgres auto-detection ==="
+    PG_RESULT=$("$SCRIPT_DIR/discover.sh" --quiet 2>/dev/null || true)
+    if [[ -n "$PG_RESULT" ]]; then
+      sed -i "s|^PG_DUMP_DBS=.*|PG_DUMP_DBS=${PG_RESULT}|" "$SCRIPT_DIR/.env"
+      echo "Found Postgres databases, wrote to .env:"
+      echo "  PG_DUMP_DBS=$PG_RESULT"
+    else
+      echo "No Postgres databases found. PG_DUMP_DBS left empty."
+    fi
+  fi
+
+  echo
   echo "Edit $SCRIPT_DIR/.env with your settings before running the backup."
 else
   echo
   echo ".env already exists, skipping."
 fi
 
-# Make backup.sh executable
-chmod +x "$SCRIPT_DIR/backup.sh"
+# Make scripts executable
+chmod +x "$SCRIPT_DIR/backup.sh" "$SCRIPT_DIR/discover.sh" "$SCRIPT_DIR/uninstall.sh"
 
 # Offer cron setup
 echo
