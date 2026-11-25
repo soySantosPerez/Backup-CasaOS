@@ -122,6 +122,8 @@ sudo systemctl start casaos
 | `PRE_BACKUP_CMD` | no | — | Command run before compressing; the backup aborts if it fails |
 | `TELEGRAM_BOT_TOKEN` | yes | — | Telegram bot token |
 | `TELEGRAM_CHAT_ID` | yes | — | Chat ID for notifications |
+| `HA_BACKUP_URL` | no | — | Home Assistant base URL, e.g. `http://homeassistant.local:8123` |
+| `HA_BACKUP_WEBHOOK` | no | — | Webhook ID; each run POSTs `{host, status, size_bytes, duration_s, file, message}` to it |
 
 ## Troubleshooting
 

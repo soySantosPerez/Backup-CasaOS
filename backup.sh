@@ -31,6 +31,8 @@ source "$SCRIPT_DIR/.env"
 : "${TELEGRAM_CHAT_ID:?TELEGRAM_CHAT_ID is required}"
 : "${PATHS_TO_BACKUP:=/DATA,/var/lib/casaos}"
 : "${PRE_BACKUP_CMD:=}"
+: "${HA_BACKUP_URL:=}"
+: "${HA_BACKUP_WEBHOOK:=}"
 
 TIMESTAMP="$(date +%Y-%m-%d_%H%M%S)"
 BACKUP_NAME="${HOST_NAME}_${TIMESTAMP}.tar.gz"
@@ -71,6 +73,29 @@ tg_send() {
     -o /dev/null || log "WARN: telegram failed (no connectivity?)"
 }
 
+json_escape() {
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  s="${s//$'\n'/\\n}"
+  s="${s//$'\r'/}"
+  s="${s//$'\t'/ }"
+  printf '%s' "$s"
+}
+
+# Optional Home Assistant webhook; never blocks the backup or Telegram
+ha_send() {
+  local status="$1" message="${2:-}" size="${3:-null}" file="${4:-}"
+  [[ -n "$HA_BACKUP_URL" && -n "$HA_BACKUP_WEBHOOK" ]] || return 0
+  local json
+  json=$(printf '{"host":"%s","status":"%s","size_bytes":%s,"duration_s":%s,"file":"%s","message":"%s"}' \
+    "$(json_escape "$HOST_NAME")" "$status" "$size" "$(( $(date +%s) - START_TS ))" \
+    "$(json_escape "$file")" "$(json_escape "$message")")
+  curl -fsS -m 10 -X POST -H 'Content-Type: application/json' -d "$json" \
+    "${HA_BACKUP_URL%/}/api/webhook/${HA_BACKUP_WEBHOOK}" \
+    -o /dev/null || log "WARN: Home Assistant webhook failed"
+}
+
 cleanup() {
   local exit_code=$?
   rm -f "$PARTIAL_PATH"
@@ -82,6 +107,7 @@ fail() {
   local msg="$1"
   log "ERROR: $msg"
   tg_send "Backup FAILED: $msg" "❌"
+  ha_send fail "$msg"
   exit 1
 }
 
@@ -210,5 +236,6 @@ Retained: $(ls -1 "${HOST_DEST}"/${HOST_NAME}_*.tar.gz 2>/dev/null | wc -l)"
 
 log "$SUMMARY"
 tg_send "$SUMMARY" "✅"
+ha_send ok "" "$TAR_SIZE" "$BACKUP_NAME"
 
 log "=== Backup completed ==="
