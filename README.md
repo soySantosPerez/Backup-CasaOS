@@ -12,8 +12,9 @@ Born from a real incident: an SD card died on a Raspberry Pi running CasaOS, and
 
 ## How it works
 
-1. **Phase 1** — Generates a `tar.gz` with multicore `pigz` of the paths listed in `PATHS_TO_BACKUP`. Default: `/DATA` + `/var/lib/casaos`.
-2. **Phase 2** — `rsync`s the tar to the NAS, then verifies remote size == local size.
+0. **Phase 0** (optional) — Runs `PRE_BACKUP_CMD`, e.g. a database dump (see `examples/pre-backup-mariadb.sh`).
+1. **Phase 1** — Generates a `tar.gz` with multicore `pigz` of the paths listed in `PATHS_TO_BACKUP`, written straight to the NAS as a hidden `.partial` file. Default: `/DATA` + `/var/lib/casaos`. Nothing is written to local storage, which spares the SD card.
+2. **Phase 2** — Tests the archive's integrity on the NAS, then renames it to its final name.
 3. **Phase 3** — Rotation: keeps the N most recent (default 3), deletes the rest.
 4. **Summary** — Sends a Telegram message with duration, size, and retained count.
 
@@ -118,6 +119,7 @@ sudo systemctl start casaos
 | `BACKUP_DEST` | yes | — | Path to NAS or external storage mount |
 | `BACKUP_RETENTION` | no | `3` | Number of backups to keep per host |
 | `PATHS_TO_BACKUP` | no | `/DATA,/var/lib/casaos` | Comma-separated paths to include |
+| `PRE_BACKUP_CMD` | no | — | Command run before compressing; the backup aborts if it fails |
 | `TELEGRAM_BOT_TOKEN` | yes | — | Telegram bot token |
 | `TELEGRAM_CHAT_ID` | yes | — | Chat ID for notifications |
 
@@ -134,7 +136,9 @@ curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
 
 **NAS not mounted in time**: if cron runs before CIFS/NFS is ready, the script fails with "BACKUP_DEST does not exist". Make sure the mount is in `/etc/fstab` with `_netdev`, or mounted via systemd with `RequiresMountsFor`.
 
-**Not enough temp space**: the tar is created in `/tmp` before being rsync'd. If your CasaOS data is huge, ensure `/tmp` has enough space.
+**Leftover `.partial` files**: an interrupted run (e.g. power loss) can leave a hidden `.<name>.partial` in the host folder on the NAS. It is never counted by rotation; delete it by hand.
+
+**Databases**: copying live database files (MariaDB, Postgres) can produce an inconsistent backup. Dump them first with `PRE_BACKUP_CMD` into a path inside `PATHS_TO_BACKUP`.
 
 ## Uninstalling
 

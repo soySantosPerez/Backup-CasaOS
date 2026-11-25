@@ -30,16 +30,19 @@ source "$SCRIPT_DIR/.env"
 : "${TELEGRAM_BOT_TOKEN:?TELEGRAM_BOT_TOKEN is required}"
 : "${TELEGRAM_CHAT_ID:?TELEGRAM_CHAT_ID is required}"
 : "${PATHS_TO_BACKUP:=/DATA,/var/lib/casaos}"
+: "${PRE_BACKUP_CMD:=}"
 
 TIMESTAMP="$(date +%Y-%m-%d_%H%M%S)"
 BACKUP_NAME="${HOST_NAME}_${TIMESTAMP}.tar.gz"
 HOST_DEST="${BACKUP_DEST}/${HOST_NAME}-backups"
 BACKUP_PATH="${HOST_DEST}/${BACKUP_NAME}"
-WORK_DIR="/tmp/casaos-backup-$$"
+# The tar is written straight to the destination under a hidden name and
+# renamed once verified, so nothing touches local storage (e.g. the SD card)
+PARTIAL_PATH="${HOST_DEST}/.${BACKUP_NAME}.partial"
 LOG_DIR="$SCRIPT_DIR/logs"
 LOG_FILE="${LOG_DIR}/casaos-backup_${TIMESTAMP}.log"
 
-mkdir -p "$WORK_DIR" "$LOG_DIR"
+mkdir -p "$LOG_DIR"
 
 # Log to file and stdout simultaneously
 exec > >(tee -a "$LOG_FILE") 2>&1
@@ -70,7 +73,7 @@ tg_send() {
 
 cleanup() {
   local exit_code=$?
-  rm -rf "$WORK_DIR"
+  rm -f "$PARTIAL_PATH"
   exit "$exit_code"
 }
 trap cleanup EXIT
@@ -101,11 +104,24 @@ rm -f "${BACKUP_DEST}/.write_test_$$"
 mkdir -p "$HOST_DEST"
 
 ############################################
-# Phase 1: compress
+# Phase 0: pre-backup command (optional)
 ############################################
 
-log "--- Phase 1: compressing ---"
-TAR_LOCAL="${WORK_DIR}/${BACKUP_NAME}"
+# e.g. dump databases to a path inside PATHS_TO_BACKUP, so the archive holds
+# a consistent copy instead of live database files
+if [[ -n "$PRE_BACKUP_CMD" ]]; then
+  log "--- Phase 0: pre-backup command ---"
+  log "Running: $PRE_BACKUP_CMD"
+  if ! bash -o pipefail -c "$PRE_BACKUP_CMD"; then
+    fail "PRE_BACKUP_CMD failed"
+  fi
+fi
+
+############################################
+# Phase 1: compress straight to destination
+############################################
+
+log "--- Phase 1: compressing to destination ---"
 
 IFS=',' read -ra PATHS <<< "$PATHS_TO_BACKUP"
 TAR_ARGS=()
@@ -125,15 +141,17 @@ fi
 # Use pigz for multicore compression if available, fall back to gzip
 if command -v pigz >/dev/null 2>&1; then
   COMPRESS="pigz -6 -p $(nproc)"
+  TEST_CMD="pigz -t"
 else
   log "WARN: pigz not found, falling back to gzip (slower)"
   COMPRESS="gzip -6"
+  TEST_CMD="gzip -t"
 fi
 
 log "Compressing ${TAR_ARGS[*]} (this may take a while)..."
 TAR_STDERR=$(mktemp)
 if ! tar --use-compress-program="$COMPRESS" \
-         -cf "$TAR_LOCAL" \
+         -cf "$PARTIAL_PATH" \
          "${TAR_ARGS[@]}" 2>"$TAR_STDERR"; then
   TAR_ERR=$(grep -v "Removing leading" "$TAR_STDERR" | head -5)
   rm -f "$TAR_STDERR"
@@ -141,26 +159,23 @@ if ! tar --use-compress-program="$COMPRESS" \
 fi
 rm -f "$TAR_STDERR"
 
-TAR_SIZE=$(stat -c %s "$TAR_LOCAL" 2>/dev/null || stat -f %z "$TAR_LOCAL")
+TAR_SIZE=$(stat -c %s "$PARTIAL_PATH" 2>/dev/null || stat -f %z "$PARTIAL_PATH")
 log "Tar generated: $(bytes_to_human "$TAR_SIZE")"
 
 ############################################
-# Phase 2: transfer to destination
+# Phase 2: verify and finalize
 ############################################
 
-log "--- Phase 2: moving backup to destination ---"
-if ! rsync -a --partial --inplace "$TAR_LOCAL" "$BACKUP_PATH"; then
-  fail "rsync to destination failed"
+log "--- Phase 2: verifying archive on destination ---"
+# Reads the whole archive back from the destination
+if ! $TEST_CMD "$PARTIAL_PATH"; then
+  fail "Archive integrity check failed on destination"
 fi
+log "Verified: archive is intact"
 
-# Verify size
-REMOTE_SIZE=$(stat -c %s "$BACKUP_PATH" 2>/dev/null || stat -f %z "$BACKUP_PATH")
-if [[ "$TAR_SIZE" != "$REMOTE_SIZE" ]]; then
-  fail "Destination size ($REMOTE_SIZE) does not match local ($TAR_SIZE)"
+if ! mv "$PARTIAL_PATH" "$BACKUP_PATH"; then
+  fail "Could not rename archive to $BACKUP_PATH"
 fi
-log "Verified: sizes match"
-
-rm -f "$TAR_LOCAL"
 
 ############################################
 # Phase 3: rotation (keep N most recent)
